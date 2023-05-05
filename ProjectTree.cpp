@@ -297,8 +297,8 @@ ProjectTree::AddRow()
     // Get parent row item
     Glib::RefPtr<Glib::ObjectBase> raw_item =
         m_selection_model->get_selected_item();
-    Glib::RefPtr<ProjectModel> row_item =
-        std::dynamic_pointer_cast<ProjectModel>(raw_item);
+    Glib::RefPtr<Gtk::TreeListRow> row_item =
+        std::dynamic_pointer_cast<Gtk::TreeListRow>(raw_item);
 
     // If the item is NULL then needs to be added to root
     if (raw_item == nullptr)
@@ -311,8 +311,9 @@ ProjectTree::AddRow()
     else
     {
         // Create a new cell and append to the row childs
+        auto row_model = std::dynamic_pointer_cast<ProjectModel>(row_item->get_item());
         ProjectCell new_cell{new_box};
-        row_item->AppendChild(new_cell);
+        row_model->AppendChild(new_cell);
     }
 }
 
@@ -322,13 +323,14 @@ ProjectTree::RemoveRow()
     // Get row item
     Glib::RefPtr<Glib::ObjectBase> raw_item =
         m_selection_model->get_selected_item();
-    // FIXME: This convertion isn't working
-    Glib::RefPtr<ProjectModel> row_item =
-        std::dynamic_pointer_cast<ProjectModel>(raw_item);
+    Glib::RefPtr<Gtk::TreeListRow> row_item =
+        std::dynamic_pointer_cast<Gtk::TreeListRow>(raw_item);
+    g_assert(row_item); // who'd remove a row that doesn't exist?
+    Glib::RefPtr<ProjectModel> model = std::dynamic_pointer_cast<ProjectModel>(row_item->get_item());
 
     // Remove the selected row
     guint row_position = m_selection_model->get_selected();
-    row_item->GetParentStore()->remove(row_position);
+    model->GetParentStore()->remove(row_position);
 }
 
 void
