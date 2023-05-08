@@ -2,7 +2,7 @@
 #define GUI_MAINWINDOW_HH
 
 // Widgets headers
-#include "ProjectTree.hh"
+//#include "ProjectTree.hh"
 
 // GTKMM headers
 #include <gtkmm/applicationwindow.h>
@@ -32,7 +32,8 @@ private:
 
     //! @brief Project tree box.
     //!
-    ProjectTree m_project_tree;
+    //ProjectTree m_project_tree;
+    Example_ListView_TreeList treelist;
 };
 
 #endif // GUI_MAINWINDOW_HH
