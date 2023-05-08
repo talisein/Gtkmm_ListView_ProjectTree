@@ -13,7 +13,7 @@
  */
 
 #include <gtkmm.h>
-
+#include <iostream>
 namespace
 {
 class CellItem_Holiday
@@ -84,6 +84,7 @@ protected:
     bool m_dave;
     bool m_world_holiday; /* shared by the European hackers */
     std::vector<CellItem_Holiday> m_children;
+    Glib::RefPtr<Gio::ListStore<ModelColumns>> m_store;
 
     static Glib::RefPtr<ModelColumns> create(const CellItem_Holiday& item)
     {
@@ -94,8 +95,13 @@ protected:
     ModelColumns(const CellItem_Holiday& item)
     : m_holiday_name(item.m_holiday_name), m_alex(item.m_alex), m_havoc(item.m_havoc),
       m_tim(item.m_tim), m_owen(item.m_owen), m_dave(item.m_dave),
-      m_world_holiday(item.m_world_holiday), m_children(item.m_children)
-    { }
+      m_world_holiday(item.m_world_holiday), m_children(item.m_children),
+      m_store(m_children.empty() ? nullptr : Gio::ListStore<ModelColumns>::create())
+    {
+        for (const auto &child : m_children) {
+            m_store->append(ModelColumns::create(child));
+        }
+    }
   }; // ModelColumns
 
   Glib::RefPtr<Gio::ListModel> create_model(
@@ -110,12 +116,16 @@ protected:
   Gtk::ColumnView m_ColumnView;
   Gtk::Box m_ButtonBox;
   Gtk::ToggleButton m_ShowButtons[CheckColumns::N_COLS];
+  Gtk::Button m_AddSiblingRowButton;
+  Gtk::Button m_AddParentRowButton;
 
   Glib::RefPtr<Gtk::TreeListModel> m_TreeListModel;
   Glib::RefPtr<Gtk::MultiSelection> m_TreeSelection;
   Glib::RefPtr<Gtk::ColumnViewColumn> m_ViewColumns[CheckColumns::N_COLS];
 
   // Signal handlers:
+  void on_add_sibling_row_button_pressed();
+  void on_add_parent_row_button_pressed();
   void on_show_button_toggled(int button);
   void on_setup_holiday(const Glib::RefPtr<Gtk::ListItem>& list_item);
   void on_setup_checkbutton(const Glib::RefPtr<Gtk::ListItem>& list_item);
@@ -148,7 +158,9 @@ Gtk::Window* do_listview_treelist()
 Example_ListView_TreeList::Example_ListView_TreeList()
 : m_VBox(Gtk::Orientation::VERTICAL, 8),
   m_Label("Jonathan's Holiday Card Planning Sheet"),
-  m_ButtonBox(Gtk::Orientation::HORIZONTAL, 5)
+  m_ButtonBox(Gtk::Orientation::HORIZONTAL, 5),
+  m_AddSiblingRowButton("Add Sibling"),
+  m_AddParentRowButton("Add Parent")
 {
   set_title("Card planning sheet");
   set_default_size(650, 400);
@@ -179,6 +191,10 @@ Example_ListView_TreeList::Example_ListView_TreeList()
   // Buttons for showing or hiding columns.
   m_VBox.append(m_ButtonBox);
   m_ButtonBox.set_halign(Gtk::Align::END);
+  m_ButtonBox.append(m_AddSiblingRowButton);
+  m_AddSiblingRowButton.signal_clicked().connect(sigc::mem_fun(*this, &Example_ListView_TreeList::on_add_sibling_row_button_pressed));
+  m_ButtonBox.append(m_AddParentRowButton);
+  m_AddParentRowButton.signal_clicked().connect(sigc::mem_fun(*this, &Example_ListView_TreeList::on_add_parent_row_button_pressed));
   m_ButtonBox.append(*Gtk::make_managed<Gtk::Label>("Show columns"));
   for (int button = 0; button < CheckColumns::N_COLS; ++button)
   {
@@ -283,11 +299,15 @@ Glib::RefPtr<Gio::ListModel> Example_ListView_TreeList::create_model(
     // An item without children, i.e. a leaf in the tree.
     return {};
 
-  auto result = Gio::ListStore<ModelColumns>::create();
-  const std::vector<CellItem_Holiday>& children = col ? col->m_children : m_vecItems;
-  for (const auto& child : children)
-    result->append(ModelColumns::create(child));
-  return result;
+  if (col) {
+      return col->m_store;
+  } else {
+      auto result = Gio::ListStore<ModelColumns>::create();
+      const std::vector<CellItem_Holiday>& children = col ? col->m_children : m_vecItems;
+      for (const auto& child : children)
+          result->append(ModelColumns::create(child));
+      return result;
+  }
 }
 
 void Example_ListView_TreeList::add_columns()
@@ -392,6 +412,66 @@ void Example_ListView_TreeList::on_bind_checkbutton(
   }
   else
     checkbutton->set_inconsistent(true);
+}
+
+void Example_ListView_TreeList::on_add_parent_row_button_pressed()
+{
+    static int i = 1000;
+    auto bitset = m_TreeSelection->get_selection();
+    auto idx = bitset->get_nth(0);
+
+    auto sibling_row = m_TreeListModel->get_row(idx);
+    if (!sibling_row) {
+        std::cout << "null sibling\n";
+        return;
+    }
+
+    auto parent_row = sibling_row->get_parent();
+    if (!parent_row) {
+        std::cout << "null parent\n";
+        return;
+    }
+
+    auto parent_item = std::dynamic_pointer_cast<ModelColumns>(parent_row->get_item());
+    auto model = std::dynamic_pointer_cast<Gio::ListStore<ModelColumns>>(parent_row->get_children());
+
+    std::stringstream name;
+    name << "New Holiday " << i++;
+    auto &new_holiday_parent = parent_item->m_children.emplace_back(name.str(), false, false, false, false, false, false);
+    new_holiday_parent.m_children.emplace_back("first child", false, false ,false, false, false, false);
+    model->append(ModelColumns::create(new_holiday_parent));
+}
+
+void Example_ListView_TreeList::on_add_sibling_row_button_pressed()
+{
+    static  int i = 0;
+    auto bitset = m_TreeSelection->get_selection();
+    auto idx = bitset->get_nth(0);
+
+    auto sibling_row = m_TreeListModel->get_row(idx);
+    if (!sibling_row) {
+        std::cout << "null sibling\n";
+        return;
+    }
+    auto sibling_item = std::dynamic_pointer_cast<ModelColumns>(sibling_row->get_item());
+    if (!sibling_item) {
+        std::cout << "null sibling item\n";
+        return;
+    }
+
+    auto parent_row = sibling_row->get_parent();
+    if (!parent_row) {
+        std::cout << "null parent\n";
+        return;
+    }
+
+    auto parent_item = std::dynamic_pointer_cast<ModelColumns>(parent_row->get_item());
+    auto model = std::dynamic_pointer_cast<Gio::ListStore<ModelColumns>>(parent_row->get_children());
+
+    std::stringstream name;
+    name << "New Holiday " << i++;
+    auto &new_holiday = parent_item->m_children.emplace_back(name.str(), false, false, false, false, false, false);
+    model->append(ModelColumns::create(new_holiday));
 }
 
 int main(int argc, char **argv)
